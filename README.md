@@ -359,3 +359,139 @@ graph TD
 ```
 
 This implementation provides a flexible and type-safe way to handle both simple operations and operations that need to return values, while maintaining consistent error handling across both cases.
+
+
+
+# Implementing Result Pattern in AuthService
+
+## Interface Update
+First, we update the `IAuthService` interface to use `Result<AuthResponse>`:
+
+```csharp
+public interface IAuthService
+{
+    Task<Result<AuthResponse>> GetTokenAsync(string email, string password, CancellationToken cancellationToken = default);
+    Task<AuthResponse?> GetRefreshTokenAsync(string token, string refreshToken, CancellationToken cancellationToken = default);
+    Task<bool> RevokeRefreshTokenAsync(string token, string refreshToken, CancellationToken cancellationToken = default);
+}
+```
+
+## Error Definition
+We create a dedicated errors class for User-related errors:
+
+```csharp
+// Errors/UserErrors.cs
+public static class UserErrors
+{
+    public static readonly Error InvalidCredentials = new(
+        "User.InvalidCredentials",
+        "Invalid Email or Password"
+    );
+}
+```
+
+## AuthService Implementation
+
+```csharp
+public class AuthService : IAuthService
+{
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IJwtProvider _jwtProvider;
+    private readonly int _refreshTokenExpiryDays = 14;
+
+    public AuthService(UserManager<ApplicationUser> userManager, IJwtProvider jwtProvider)
+    {
+        _userManager = userManager;
+        _jwtProvider = jwtProvider;
+    }
+
+    public async Task<Result<AuthResponse>> GetTokenAsync(
+        string email,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await _userManager.FindByEmailAsync(email);
+        
+        if (user is null)
+        {
+            return Result.Failure<AuthResponse>(UserErrors.InvalidCredentials);
+        }
+
+        var isValidPassword = await _userManager.CheckPasswordAsync(user, password);
+        
+        if (!isValidPassword)
+        {
+            return Result.Failure<AuthResponse>(UserErrors.InvalidCredentials);
+        }
+
+        var (token, expiresIn) = _jwtProvider.GenerateToken(user);
+        var refreshToken = GenerateRefreshToken();
+        var refreshTokenExpiration = DateTime.UtcNow.AddDays(_refreshTokenExpiryDays);
+
+        user.RefreshTokens.Add(new RefreshToken 
+        { 
+            Token = refreshToken, 
+            ExpiresOn = refreshTokenExpiration 
+        });
+        
+        await _userManager.UpdateAsync(user);
+
+        var response = new AuthResponse(
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName,
+            token,
+            expiresIn,
+            refreshToken,
+            refreshTokenExpiration);
+
+        return Result.Success(response);
+    }
+}
+```
+
+## Key Changes
+
+1. **Return Type**
+   - Changed from `Task<AuthResponse?>` to `Task<Result<AuthResponse>>`
+   - Removed nullable return type
+
+2. **Error Handling**
+   - Created dedicated `UserErrors` class
+   - Replaced null returns with `Result.Failure<AuthResponse>`
+   - Used standardized error codes and messages
+
+3. **Success Case**
+   - Created response object
+   - Wrapped in `Result.Success()`
+
+## Flow Diagram
+
+```mermaid
+graph TD
+    A[GetTokenAsync] --> B{User Exists?}
+    B -->|No| C[Return Failure<br>InvalidCredentials]
+    B -->|Yes| D{Valid Password?}
+    D -->|No| C
+    D -->|Yes| E[Generate Tokens]
+    E --> F[Create Response]
+    F --> G[Return Success<br>with Response]
+```
+
+## Benefits
+1. **Type Safety**
+   - No more null checking
+   - Clear success/failure states
+
+2. **Error Management**
+   - Centralized error definitions
+   - Consistent error messages
+   - Reusable error codes
+
+3. **Maintainability**
+   - Cleaner code structure
+   - Easier to extend
+   - Better error tracking
+
+Would you like me to elaborate on any part of this implementation or explain additional improvements we could make?
