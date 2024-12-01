@@ -116,3 +116,125 @@ public async Task<IActionResult> LoginAsync([FromBody] LoginRequest request,
         : BadRequest(result.Error);
 }
 ```
+
+
+# Extending Result Pattern with Generic Support
+
+## Base Result Class Implementation
+
+The base `Result` class provides fundamental success/failure handling:
+
+```csharp
+public class Result
+{
+    protected Result(bool isSuccess, Error error)
+    {
+        if ((isSuccess && error != Error.None) || (!isSuccess && error == Error.None))
+            throw new InvalidOperationException();
+        
+        IsSuccess = isSuccess;
+        Error = error;
+    }
+
+    public bool IsSuccess { get; }
+    public bool IsFailure => !IsSuccess;
+    public Error Error { get; }
+
+    public static Result Success() => new(true, Error.None);
+    public static Result Failure(Error error) => new(false, error);
+}
+```
+
+## Generic Result Implementation
+
+To support returning values with successful results, we implement a generic version:
+
+```mermaid
+graph TD
+    A[Result] --> B[Result'T']
+    B --> C{IsSuccess?}
+    C -->|Yes| D[Return Value]
+    C -->|No| E[Throw InvalidOperationException]
+```
+
+```csharp
+public class Result<TValue> : Result
+{
+    private readonly TValue? _value;
+
+    protected Result(TValue? value, bool isSuccess, Error error) 
+        : base(isSuccess, error)
+    {
+        _value = value;
+    }
+
+    // Returns value if successful, throws exception if failed
+    public TValue Value => IsSuccess 
+        ? _value! 
+        : throw new InvalidOperationException("Failure results cannot have value");
+}
+```
+
+## Key Features Comparison
+
+| Feature | Base Result | Generic Result<TValue> |
+|---------|-------------|----------------------|
+| Success State | ✓ | ✓ |
+| Error Information | ✓ | ✓ |
+| Return Value | ✗ | ✓ |
+| Inheritance | N/A | Inherits from Result |
+
+## Example Usage with AuthService
+
+Before:
+```csharp
+public async Task<AuthResponse?> GetTokenAsync(...)
+{
+    if (user is null)
+        return null; // Limited error information
+}
+```
+
+After:
+```csharp
+public async Task<Result<AuthResponse>> GetTokenAsync(...)
+{
+    if (user is null)
+        return Result<AuthResponse>.Failure(new Error("AUTH001", "Invalid email"));
+
+    // On success
+    return Result<AuthResponse>.Success(new AuthResponse(
+        user.Id,
+        user.Email,
+        user.FirstName,
+        user.LastName,
+        token,
+        expiresIn,
+        refreshToken,
+        refreshTokenExpiration
+    ));
+}
+```
+
+## Key Benefits
+
+1. **Type Safety**
+   - No null return values
+   - Compile-time type checking
+   - Clear success/failure states
+
+2. **Error Handling**
+   - Structured error information
+   - Impossible to access value on failure
+   - Clear separation of success and failure paths
+
+3. **Inheritance**
+   - Generic Result inherits base Result functionality
+   - Maintains consistent behavior
+   - Allows for polymorphic usage
+
+## Next Steps
+1. Implement static factory methods for Generic Result
+2. Update service interfaces to use Result<T>
+3. Implement controller response mapping
+4. Define domain-specific errors
