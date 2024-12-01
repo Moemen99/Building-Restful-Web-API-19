@@ -494,4 +494,108 @@ graph TD
    - Easier to extend
    - Better error tracking
 
-Would you like me to elaborate on any part of this implementation or explain additional improvements we could make?
+
+
+
+
+# Updating AuthController for Result Pattern
+
+## Previous Implementation
+The controller previously checked for null results:
+
+```csharp
+public class AuthController : ControllerBase
+{
+    private readonly IAuthService _authService;
+
+    public AuthController(IAuthService authService)
+    {
+        _authService = authService;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> LoginAsync(
+        [FromBody] LoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var authResult = await _authService.GetTokenAsync(
+            request.Email,
+            request.Password,
+            cancellationToken);
+
+        return authResult is null 
+            ? BadRequest("Invalid Email or Password") 
+            : Ok(authResult);
+    }
+}
+```
+
+## Updated Implementation
+Now we check the `IsSuccess` property of the Result:
+
+```csharp
+public class AuthController : ControllerBase
+{
+    private readonly IAuthService _authService;
+
+    public AuthController(IAuthService authService)
+    {
+        _authService = authService;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> LoginAsync(
+        [FromBody] LoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var authResult = await _authService.GetTokenAsync(
+            request.Email,
+            request.Password,
+            cancellationToken);
+
+        return authResult.IsSuccess 
+            ? Ok(authResult.Value) 
+            : BadRequest(authResult.Error);
+    }
+}
+```
+
+## Key Changes
+
+```mermaid
+graph TD
+    A[Previous: Null Check] --> B[authResult is null]
+    B -->|Yes| C[BadRequest with message]
+    B -->|No| D[Ok with result]
+
+    E[New: Result Pattern] --> F[authResult.IsSuccess]
+    F -->|Yes| G[Ok with authResult.Value]
+    F -->|No| H[BadRequest with authResult.Error]
+```
+
+## Comparison
+
+| Aspect | Previous Implementation | New Implementation |
+|--------|------------------------|-------------------|
+| Check Type | Null check | Success/Failure state |
+| Error Response | Static message | Detailed error object |
+| Success Response | Full result | Only value property |
+| Type Safety | Nullable type | Non-nullable Result |
+
+## Benefits
+1. **Better Error Handling**
+   - Structured error responses
+   - Detailed error information
+   - Consistent error format
+
+2. **Cleaner Code**
+   - More explicit success/failure states
+   - No null checking
+   - Clear separation of concerns
+
+3. **Better Response Structure**
+   - Success responses only contain relevant data
+   - Error responses include error details
+   - More consistent API behavior
+
+The new implementation provides better type safety and more detailed error information while simplifying the controller logic.
