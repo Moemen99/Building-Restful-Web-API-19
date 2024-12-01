@@ -238,3 +238,34 @@ public async Task<Result<AuthResponse>> GetTokenAsync(...)
 2. Update service interfaces to use Result<T>
 3. Implement controller response mapping
 4. Define domain-specific errors
+
+
+
+now lets add the two new methods inside the class result class that both will be generic if we want return values 
+
+public class Result 
+ {
+  
+  public Result (bool isSucess,Error error)
+  {
+   if((isSucess && error != Error.None) || (!isSuccess && error == Error.None))
+      throw new InvalidOpertionException();
+   
+   IsSuccess= isSuccess;
+   Error = error; 
+  }
+  public bool IsSuccess {get;}
+  public bool IsFailure => !IsSuccess;
+  public Error Error {get;} = default!;
+  
+
+
+  public static Result Sucess() => new (true,Error.None);
+  public static Result Failure(Error error) => new (false,error);
+
+  public static Result<TValue> Success<TValue>(TValue value) => new(value,true,Error.None);   // will need to return value not like the first one that will not retun value
+   public static Result<TValue> Success<TValue>(Error error) => new(default,false,error);
+ }
+
+so this is the final shape of class result 
+
